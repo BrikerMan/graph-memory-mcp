@@ -74,7 +74,6 @@ app = FastAPI(
         Core Concepts:
         - The 'main' database acts as the core index and routing table
         - Contexts provide specialized memories for specific topics
-        - Storage location is determined by the MEMORY_FOLDER environment variable
         """),
     version="0.1.0",
     lifespan=lifespan,
