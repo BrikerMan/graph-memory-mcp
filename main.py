@@ -213,7 +213,7 @@ class MemoryStorage:
 
             # Write all records
             for record in records:
-                f.write(json.dumps(record) + "\n")
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     def list_contexts(self, location: Optional[str] = None) -> List[str]:
         """

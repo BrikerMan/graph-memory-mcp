@@ -9,6 +9,8 @@ Storage location is determined by the MEMORY_FOLDER environment variable.
 import json
 import logging
 import os
+import re
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
@@ -84,7 +86,7 @@ class MemoryStorage:
         except (json.JSONDecodeError, IOError):
             return False
     
-    def get_database_path(self, context: str = "main") -> Path:
+    def get_database_path(self, context: Optional[str] = "main") -> Path:
         """
         Get the file path for a specific context database.
         
@@ -96,12 +98,13 @@ class MemoryStorage:
         """
         storage_path = self.get_storage_path()
         
-        if context == "main":
+        # Treat 'main', 'default', and empty string as the main database
+        if not context or context in ["main", "default", ""]:
             return storage_path / "memory.jsonl"
         else:
             return storage_path / f"memory-{context}.jsonl"
     
-    def load_database(self, context: str = "main") -> List[Dict[str, Any]]:
+    def load_database(self, context: Optional[str] = "main") -> List[Dict[str, Any]]:
         """
         Load all records from a database file.
         
@@ -131,7 +134,7 @@ class MemoryStorage:
         
         return records
     
-    def save_database(self, records: List[Dict[str, Any]], context: str = "main"):
+    def save_database(self, records: List[Dict[str, Any]], context: Optional[str] = "main"):
         """
         Save records to a database file.
         
@@ -150,7 +153,7 @@ class MemoryStorage:
             
             # Write all records
             for record in records:
-                f.write(json.dumps(record) + '\n')
+                f.write(json.dumps(record, ensure_ascii=False) + '\n')
     
     def list_contexts(self) -> List[str]:
         """
@@ -375,13 +378,14 @@ class MemoryStorage:
         
         return observations_added
         
-    def memory_search_nodes(self, keywords: List[str], contexts: Optional[List[str]] = None) -> Dict[str, List[Dict[str, Any]]]:
+    def memory_search_nodes(self, keywords: List[str], contexts: Optional[List[str]] = None, pattern: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
         """
-        Search for information in the knowledge graph using keywords.
+        Search for information in the knowledge graph using keywords and/or pattern matching.
         
         Args:
             keywords: List of keywords to search for
             contexts: List of context names to search in (if None, search in all contexts)
+            pattern: Optional wildcard pattern to match entity names (e.g., "*2025*", "diet*")
             
         Returns:
             Dictionary mapping context names to lists of matching records
@@ -414,20 +418,47 @@ class MemoryStorage:
                 results[context] = records
                 continue
             
-            # For other contexts, filter by keywords
+            # For other contexts, filter by keywords and pattern
             matching_records = []
             
             for record in records:
-                # Check each field in the record for keyword matches
-                record_str = json.dumps(record).lower()
+                # Check if record should be included based on pattern matching of entity name
+                if pattern and record.get("type") == "entity":
+                    entity_name = record.get("name", "")
+                    if not self._matches_pattern(entity_name, pattern):
+                        continue
                 
-                if any(keyword.lower() in record_str for keyword in keywords):
-                    matching_records.append(record)
+                # Check each field in the record for keyword matches
+                if keywords:
+                    record_str = json.dumps(record).lower()
+                    if not any(keyword.lower() in record_str for keyword in keywords):
+                        continue
+                
+                # If we get here, the record matched all criteria
+                matching_records.append(record)
             
             if matching_records:
                 results[context] = matching_records
                 
         return results
+    
+    def _matches_pattern(self, text: str, pattern: str) -> bool:
+        """
+        Check if text matches a wildcard pattern.
+        
+        Args:
+            text: The text to check
+            pattern: A wildcard pattern (e.g., "*2025*", "diet*")
+            
+        Returns:
+            True if the text matches the pattern, False otherwise
+        """
+        # Convert wildcard pattern to regex pattern
+        regex_pattern = pattern.replace("*", ".*")
+        regex_pattern = f"^{regex_pattern}$"
+        
+        # Match using regex
+        return bool(re.match(regex_pattern, text, re.IGNORECASE))
         
     def memory_read_graph(self, contexts: Optional[List[str]] = None) -> Dict[str, List[Dict[str, Any]]]:
         """
@@ -624,7 +655,7 @@ class MemoryStorage:
         return deleted_count
         
         
-    def memory_read_entity(self, entity_name: str, context: str = "main") -> Optional[Dict[str, Any]]:
+    def memory_read_entity(self, entity_name: str, context: Optional[str] = "main") -> Optional[Dict[str, Any]]:
         """
         Read a specific entity from the knowledge graph.
         

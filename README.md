@@ -44,7 +44,7 @@ The AI interacts with its memory using the following tools.
 - `memory_create_entities`: Adds new entities (like people, places, or concepts) to the knowledge graph.
 - `memory_create_relations`: Creates a labeled link between two existing entities.
 - `memory_add_observations`: Adds a new piece of text information to an existing entity.
-- `memory_search_nodes`: Searches for information using keywords. **The results will always include the full contents of the `main` database.**
+- `memory_search_nodes`: Searches for information using keywords and optional wildcard patterns. Supports pattern matching like `*2025*` (any entity with "2025" in the name) or `diet*` (any entity starting with "diet"). **The results will always include the full contents of the `main` database.**
 - `memory_read_graph`: Dumps the entire content of one or more databases. **The results will always include the full contents of the `main` database.**
 
 ### Management & Deletion Tools
@@ -56,6 +56,16 @@ The AI interacts with its memory using the following tools.
 ### Common Parameters
 - `context` (string): The named database to target (e.g., `work`). If not provided, the operation targets the `main` database.
 
+## Pattern Matching Examples
+
+The `memory_search_nodes` tool supports wildcard pattern matching for entity names:
+
+- `*2025*`: Matches any entity with "2025" anywhere in the name (e.g., "work-2025-09-01", "diet-plan-2025")
+- `diet*`: Matches any entity with a name starting with "diet" (e.g., "diet-log", "diet-plan-2025")
+- `work-2025-09-*`: Matches any entity with a name starting with "work-2025-09-" (e.g., "work-2025-09-01", "work-2025-09-02")
+- `*-09-*`: Matches any entity with "-09-" in the name (e.g., any September entries)
+
+Patterns can be combined with keywords to further filter results.
 
 ## File Organization Example
 
