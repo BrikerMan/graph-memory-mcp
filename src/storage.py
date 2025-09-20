@@ -9,8 +9,9 @@ Storage location is determined by the MEMORY_FOLDER environment variable.
 import json
 import logging
 import os
+import re
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -55,9 +56,32 @@ class MemoryStorage:
             logger.info(f"Created main database at {main_db_path}")
     
     def _create_empty_database(self, db_path: Path):
-        """Create an empty database file with safety marker."""
+        """Create an empty database file with safety marker and system metadata if main database."""
         with open(db_path, 'w') as f:
             f.write(json.dumps(BM_GM_SAFETY_MARKER) + '\n')
+            # If creating the main database, add system metadata and registry
+            if db_path.name == "memory.jsonl":
+                system_registry = {
+                    "name": "system_database_registry",
+                    "entity_type": "system_metadata",
+                    "observations": [
+                        "System Database Registry - All databases must be registered here",
+                        "Purpose: Centralized management of all contexts in the knowledge graph to ensure traceability and architectural consistency",
+                        "Rule: Any new database creation must add an entry here"
+                    ]
+                }
+                main_db_entry = {
+                    "name": "database_main",
+                    "entity_type": "registered_database",
+                    "observations": [
+                        "Core base database: basic information such as user profiles, goals, and preferences",
+                        "Change frequency: Low",
+                        "Dependencies: Referenced by other specialized databases as an analytical baseline",
+                        "Creation time: Automatically registered during system initialization"
+                    ]
+                }
+                f.write(json.dumps(system_registry, ensure_ascii=False) + '\n')
+                f.write(json.dumps(main_db_entry, ensure_ascii=False) + '\n')
     
     def _validate_database_file(self, db_path: Path) -> bool:
         """
@@ -84,7 +108,7 @@ class MemoryStorage:
         except (json.JSONDecodeError, IOError):
             return False
     
-    def get_database_path(self, context: str = "main") -> Path:
+    def get_database_path(self, context: Optional[str] = "main") -> Path:
         """
         Get the file path for a specific context database.
         
@@ -96,12 +120,13 @@ class MemoryStorage:
         """
         storage_path = self.get_storage_path()
         
-        if context == "main":
+        # Treat 'main', 'default', and empty string as the main database
+        if not context or context in ["main", "default", ""]:
             return storage_path / "memory.jsonl"
         else:
             return storage_path / f"memory-{context}.jsonl"
     
-    def load_database(self, context: str = "main") -> List[Dict[str, Any]]:
+    def load_database(self, context: Optional[str] = "main") -> List[Dict[str, Any]]:
         """
         Load all records from a database file.
         
@@ -131,7 +156,7 @@ class MemoryStorage:
         
         return records
     
-    def save_database(self, records: List[Dict[str, Any]], context: str = "main"):
+    def save_database(self, records: List[Dict[str, Any]], context: Optional[str] = "main"):
         """
         Save records to a database file.
         
@@ -150,7 +175,7 @@ class MemoryStorage:
             
             # Write all records
             for record in records:
-                f.write(json.dumps(record) + '\n')
+                f.write(json.dumps(record, ensure_ascii=False) + '\n')
     
     def list_contexts(self) -> List[str]:
         """
@@ -375,17 +400,48 @@ class MemoryStorage:
         
         return observations_added
         
-    def memory_search_nodes(self, keywords: List[str], contexts: Optional[List[str]] = None) -> Dict[str, List[Dict[str, Any]]]:
+    def memory_search_by_keywords(self, keywords: List[str], contexts: Optional[List[str]] = None) -> Dict[str, List[Dict[str, Any]]]:
         """
-        Search for information in the knowledge graph using keywords.
+        Search for entities by keywords in their observations.
         
         Args:
-            keywords: List of keywords to search for
-            contexts: List of context names to search in (if None, search in all contexts)
+            keywords: List of keywords to search for in entity observations.
+            contexts: List of context names to search in (if None, search in all contexts).
             
         Returns:
-            Dictionary mapping context names to lists of matching records
-            The results will always include the full contents of the 'main' database.
+            Dictionary mapping context names to lists of matching entities.
+        """
+        return self._search_nodes(keywords=keywords, contexts=contexts)
+
+    def memory_search_by_pattern(self, patterns: List[str], contexts: Optional[List[str]] = None) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Search for entities by matching patterns against their names.
+        
+        Args:
+            patterns: List of wildcard patterns to match against entity names.
+            contexts: List of context names to search in (if None, search in all contexts).
+            
+        Returns:
+            Dictionary mapping context names to lists of matching entities.
+        """
+        return self._search_nodes(patterns=patterns, contexts=contexts)
+
+    def _search_nodes(
+        self, 
+        keywords: Optional[List[str]] = None, 
+        patterns: Optional[List[str]] = None, 
+        contexts: Optional[List[str]] = None
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Internal search function to find nodes by keywords, patterns, or both.
+        
+        Args:
+            keywords: List of keywords to search for in observations.
+            patterns: List of wildcard patterns to match against entity names.
+            contexts: List of context names to search in.
+            
+        Returns:
+            Dictionary mapping context names to lists of matching records.
         """
         # Initialize storage if needed
         self.initialize_storage()
@@ -394,7 +450,7 @@ class MemoryStorage:
         if contexts is None:
             contexts = self.list_contexts()
         
-        # Ensure 'main' is always included
+        # Ensure 'main' is always included for its base-level context
         if "main" not in contexts:
             contexts.append("main")
             
@@ -409,25 +465,59 @@ class MemoryStorage:
                 logger.warning(f"Skipping invalid database context: {context}")
                 continue
             
-            # For 'main' context, include all records regardless of keywords
-            if context == "main":
-                results[context] = records
-                continue
-            
-            # For other contexts, filter by keywords
             matching_records = []
             
-            for record in records:
-                # Check each field in the record for keyword matches
-                record_str = json.dumps(record).lower()
-                
-                if any(keyword.lower() in record_str for keyword in keywords):
-                    matching_records.append(record)
+            # Filter by patterns if provided
+            if patterns:
+                pattern_matched = []
+                for record in records:
+                    if record.get("type") == "entity":
+                        entity_name = record.get("name", "")
+                        if any(self._matches_pattern(entity_name, p) for p in patterns):
+                            pattern_matched.append(record)
+                # If keywords are also provided, search within pattern-matched results
+                if keywords:
+                    keyword_and_pattern_matched = []
+                    for record in pattern_matched:
+                        record_str = json.dumps(record).lower()
+                        if any(keyword.lower() in record_str for keyword in keywords):
+                            keyword_and_pattern_matched.append(record)
+                    matching_records = keyword_and_pattern_matched
+                else:
+                    matching_records = pattern_matched
             
-            if matching_records:
+            # Filter by keywords only if patterns are not provided
+            elif keywords:
+                for record in records:
+                    record_str = json.dumps(record).lower()
+                    if any(keyword.lower() in record_str for keyword in keywords):
+                        matching_records.append(record)
+
+            # If 'main' context, and no specific search criteria, return all its content
+            if context == "main" and not keywords and not patterns:
+                results[context] = records
+            elif matching_records:
                 results[context] = matching_records
                 
         return results
+    
+    def _matches_pattern(self, text: str, pattern: str) -> bool:
+        """
+        Check if text matches a wildcard pattern.
+        
+        Args:
+            text: The text to check
+            pattern: A wildcard pattern (e.g., "*2025*", "diet*")
+            
+        Returns:
+            True if the text matches the pattern, False otherwise
+        """
+        # Convert wildcard pattern to regex pattern
+        regex_pattern = pattern.replace("*", ".*")
+        regex_pattern = f"^{regex_pattern}$"
+        
+        # Match using regex
+        return bool(re.match(regex_pattern, text, re.IGNORECASE))
         
     def memory_read_graph(self, contexts: Optional[List[str]] = None) -> Dict[str, List[Dict[str, Any]]]:
         """
@@ -624,7 +714,7 @@ class MemoryStorage:
         return deleted_count
         
         
-    def memory_read_entity(self, entity_name: str, context: str = "main") -> Optional[Dict[str, Any]]:
+    def memory_read_entity(self, entity_name: str, context: Optional[str] = "main") -> Optional[Dict[str, Any]]:
         """
         Read a specific entity from the knowledge graph.
         
