@@ -400,18 +400,48 @@ class MemoryStorage:
         
         return observations_added
         
-    def memory_search_nodes(self, keywords: List[str], contexts: Optional[List[str]] = None, pattern: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
+    def memory_search_by_keywords(self, keywords: List[str], contexts: Optional[List[str]] = None) -> Dict[str, List[Dict[str, Any]]]:
         """
-        Search for information in the knowledge graph using keywords and/or pattern matching.
+        Search for entities by keywords in their observations.
         
         Args:
-            keywords: List of keywords to search for
-            contexts: List of context names to search in (if None, search in all contexts)
-            pattern: Optional wildcard pattern to match entity names (e.g., "*2025*", "diet*")
+            keywords: List of keywords to search for in entity observations.
+            contexts: List of context names to search in (if None, search in all contexts).
             
         Returns:
-            Dictionary mapping context names to lists of matching records
-            The results will always include the full contents of the 'main' database.
+            Dictionary mapping context names to lists of matching entities.
+        """
+        return self._search_nodes(keywords=keywords, contexts=contexts)
+
+    def memory_search_by_pattern(self, patterns: List[str], contexts: Optional[List[str]] = None) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Search for entities by matching patterns against their names.
+        
+        Args:
+            patterns: List of wildcard patterns to match against entity names.
+            contexts: List of context names to search in (if None, search in all contexts).
+            
+        Returns:
+            Dictionary mapping context names to lists of matching entities.
+        """
+        return self._search_nodes(patterns=patterns, contexts=contexts)
+
+    def _search_nodes(
+        self, 
+        keywords: Optional[List[str]] = None, 
+        patterns: Optional[List[str]] = None, 
+        contexts: Optional[List[str]] = None
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Internal search function to find nodes by keywords, patterns, or both.
+        
+        Args:
+            keywords: List of keywords to search for in observations.
+            patterns: List of wildcard patterns to match against entity names.
+            contexts: List of context names to search in.
+            
+        Returns:
+            Dictionary mapping context names to lists of matching records.
         """
         # Initialize storage if needed
         self.initialize_storage()
@@ -420,7 +450,7 @@ class MemoryStorage:
         if contexts is None:
             contexts = self.list_contexts()
         
-        # Ensure 'main' is always included
+        # Ensure 'main' is always included for its base-level context
         if "main" not in contexts:
             contexts.append("main")
             
@@ -435,34 +465,38 @@ class MemoryStorage:
                 logger.warning(f"Skipping invalid database context: {context}")
                 continue
             
-            # For 'main' context, include all records regardless of keywords
-            if context == "main":
-                results[context] = records
-                continue
-            
-            # For other contexts, filter by keywords and pattern
             matching_records = []
             
-            # First, filter by pattern if provided
-            if pattern:
+            # Filter by patterns if provided
+            if patterns:
+                pattern_matched = []
                 for record in records:
                     if record.get("type") == "entity":
                         entity_name = record.get("name", "")
-                        if self._matches_pattern(entity_name, pattern):
-                            matching_records.append(record)
-            else:
-                matching_records = records
-
-            # Then, filter by keywords if provided
-            if keywords:
-                keyword_filtered_records = []
-                for record in matching_records:
+                        if any(self._matches_pattern(entity_name, p) for p in patterns):
+                            pattern_matched.append(record)
+                # If keywords are also provided, search within pattern-matched results
+                if keywords:
+                    keyword_and_pattern_matched = []
+                    for record in pattern_matched:
+                        record_str = json.dumps(record).lower()
+                        if any(keyword.lower() in record_str for keyword in keywords):
+                            keyword_and_pattern_matched.append(record)
+                    matching_records = keyword_and_pattern_matched
+                else:
+                    matching_records = pattern_matched
+            
+            # Filter by keywords only if patterns are not provided
+            elif keywords:
+                for record in records:
                     record_str = json.dumps(record).lower()
                     if any(keyword.lower() in record_str for keyword in keywords):
-                        keyword_filtered_records.append(record)
-                matching_records = keyword_filtered_records
-            
-            if matching_records:
+                        matching_records.append(record)
+
+            # If 'main' context, and no specific search criteria, return all its content
+            if context == "main" and not keywords and not patterns:
+                results[context] = records
+            elif matching_records:
                 results[context] = matching_records
                 
         return results

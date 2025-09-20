@@ -187,15 +187,24 @@ class DeleteRelationsRequestV2(BaseModel):
 
 # ===== Database and Search Operations =====
 
-class SearchNodesRequestV2(BaseModel):
-    """Request model for searching nodes in the knowledge graph."""
-    keywords: List[str] = Field(..., description="List of keywords to search for")
-    contexts: list[str] = Field(
+class SearchNodesByKeywordsRequestV2(BaseModel):
+    """Request model for searching nodes by keywords in observations."""
+    keywords: List[str] = Field(
+        default_factory=list, description="List of keywords to search for in entity observations"
+    )
+    contexts: List[str] = Field(
         default_factory=list, description="Database contexts to search in, use main if empty"
     )
-    pattern: Optional[str] = Field(
-        default=None, 
-        description="Optional wildcard pattern to match entity names (e.g., '*2025*', 'diet*')"
+
+
+class SearchNodesByPatternRequestV2(BaseModel):
+    """Request model for searching nodes by name pattern."""
+    patterns: List[str] = Field(
+        default_factory=list, 
+        description="List of wildcard patterns to match entity names (e.g., '*2025*', 'diet*')"
+    )
+    contexts: List[str] = Field(
+        default_factory=list, description="Database contexts to search in, use main if empty"
     )
 
 

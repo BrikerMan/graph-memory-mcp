@@ -23,7 +23,8 @@ from src.schema import (
     ReadEntitiesResponseV2,
     ReadRelationsResponseV2,
     # Search and database operations
-    SearchNodesRequestV2,
+    SearchNodesByKeywordsRequestV2,
+    SearchNodesByPatternRequestV2,
     # Core schema models
     _BaseEntity,
     _BaseRelation,
@@ -245,85 +246,96 @@ async def memory_add_observations(
         )
 
 
-@app.post("/memory_search_nodes", response_model=ReadEntitiesResponseV2, operation_id="memory_search_nodes")
-async def memory_search_nodes(
-    request: SearchNodesRequestV2,
+@app.post("/memory_search_by_keywords", response_model=ReadEntitiesResponseV2, operation_id="memory_search_by_keywords")
+async def memory_search_by_keywords(
+    request: SearchNodesByKeywordsRequestV2,
     storage: MemoryStorage = Depends(get_storage)
 ):
     """
-    Search for entities in the knowledge graph using keywords and optional pattern matching (wildcards supported).
-
-    - Supports both keywords and pattern search.
-    - Pattern supports wildcards, e.g. '*2025*' (any text containing 2025) or 'diet*' (text starting with 'diet').
-    - Results always include the full contents of the 'main' database.
-    - For full data dump without search, use /memory_read_graph instead.
+    Search for entities by keywords in their observations.
     """
     try:
-        # Search the graph
-        results = storage.memory_search_nodes(request.keywords, request.contexts, request.pattern)
+        results = storage.memory_search_by_keywords(request.keywords, request.contexts)
+        data = _process_search_results(results)
         
-        # Convert the results to the response format
-        data = []
-        total_entities = 0
-        
-        for context, records in results.items():
-            entities = []
+        if not data:
+            return ReadEntitiesResponseV2(
+                success=True,
+                data=[{"context": "all_entities", "entities": _get_all_entity_names(storage)}]
+            )
             
-            for record in records:
-                if record.get("type") == "entity":
-                    entity = _BaseEntity(
-                        name=record.get("name"),
-                        entity_type=record.get("entity_type") or record.get("entityType"),
-                        observations=record.get("observations", [])
-                    )
-                    entities.append(entity)
-            
-            if entities:
-                data.append({"context": context, "entities": entities})
-                total_entities += len(entities)
-        
-        # If no matching entities were found, return a list of all entity names to help the agent
-        if total_entities == 0:
-            # Get all available contexts
-            all_contexts = storage.list_contexts()
-            all_entity_names = []
-            
-            # Collect entity names from all contexts
-            for ctx in all_contexts:
-                try:
-                    records = storage.load_database(ctx)
-                    for record in records:
-                        if record.get("type") == "entity":
-                            entity_name = record.get("name")
-                            if entity_name and entity_name not in all_entity_names:
-                                all_entity_names.append(entity_name)
-                except ValueError:
-                    # Skip invalid contexts
-                    continue
-            
-            # If we found entity names, create a special response
-            if all_entity_names:
-                # Create a single entity with a special name and type
-                # The observations will contain all available entity names
-                entity = _BaseEntity(
-                    name="__all_available_entities__",
-                    entity_type="__entity_list__",
-                    observations=all_entity_names
-                )
-                data.append({"context": "available_entities", "entities": [entity]})
-        
-        return ReadEntitiesResponseV2(
-            success=True,
-            data=data
-        )
+        return ReadEntitiesResponseV2(success=True, data=data)
         
     except Exception as e:
-        logger.error(f"Error searching nodes: {str(e)}")
-        return ErrorResponseV2(
-            success=False,
-            error=str(e),
-            error_type="SearchError"
-        )
+        logger.error(f"Error searching by keywords: {str(e)}")
+        return ErrorResponseV2(success=False, error=str(e), error_type="SearchError")
+
+
+@app.post("/memory_search_by_pattern", response_model=ReadEntitiesResponseV2, operation_id="memory_search_by_pattern")
+async def memory_search_by_pattern(
+    request: SearchNodesByPatternRequestV2,
+    storage: MemoryStorage = Depends(get_storage)
+):
+    """
+    Search for entities by matching patterns against their names.
+    """
+    try:
+        results = storage.memory_search_by_pattern(request.patterns, request.contexts)
+        data = _process_search_results(results)
+
+        if not data:
+            return ReadEntitiesResponseV2(
+                success=True,
+                data=[{"context": "all_entities", "entities": _get_all_entity_names(storage)}]
+            )
+
+        return ReadEntitiesResponseV2(success=True, data=data)
+
+    except Exception as e:
+        logger.error(f"Error searching by pattern: {str(e)}")
+        return ErrorResponseV2(success=False, error=str(e), error_type="SearchError")
+
+
+def _process_search_results(results: dict) -> list:
+    """Helper to process search results into the response format."""
+    data = []
+    for context, records in results.items():
+        entities = []
+        for record in records:
+            if record.get("type") == "entity":
+                entity = _BaseEntity(
+                    name=record.get("name"),
+                    entity_type=record.get("entity_type") or record.get("entityType"),
+                    observations=record.get("observations", [])
+                )
+                entities.append(entity)
+        if entities:
+            data.append({"context": context, "entities": entities})
+    return data
+
+
+def _get_all_entity_names(storage: MemoryStorage) -> list:
+    """Helper to get all entity names as a fallback."""
+    all_contexts = storage.list_contexts()
+    all_entity_names = []
+    for ctx in all_contexts:
+        try:
+            records = storage.load_database(ctx)
+            for record in records:
+                if record.get("type") == "entity":
+                    entity_name = record.get("name")
+                    if entity_name and entity_name not in all_entity_names:
+                        all_entity_names.append(entity_name)
+        except ValueError:
+            continue
+    
+    if all_entity_names:
+        return [_BaseEntity(
+            name="__all_available_entities__",
+            entity_type="__entity_list__",
+            observations=all_entity_names
+        )]
+    return []
 
 
 @app.post("/memory_read_graph", response_model=ReadEntitiesResponseV2, operation_id="memory_read_graph")
