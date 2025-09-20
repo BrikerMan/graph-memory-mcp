@@ -56,7 +56,7 @@ The AI interacts with its memory using the following tools.
 ### Common Parameters
 - `context` (string): The named database to target (e.g., `work`). If not provided, the operation targets the `main` database.
 
-## Pattern Matching Examples
+## Search Examples
 
 The `memory_search_nodes` tool supports wildcard pattern matching for entity names:
 

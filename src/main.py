@@ -271,14 +271,12 @@ async def memory_search_nodes(
             
             for record in records:
                 if record.get("type") == "entity":
-                    # Check if the entity actually matches keywords before adding it
-                    if context != "main" or not request.keywords or any(keyword.lower() in json.dumps(record).lower() for keyword in request.keywords):
-                        entity = _BaseEntity(
-                            name=record.get("name"),
-                            entity_type=record.get("entity_type") or record.get("entityType"),
-                            observations=record.get("observations", [])
-                        )
-                        entities.append(entity)
+                    entity = _BaseEntity(
+                        name=record.get("name"),
+                        entity_type=record.get("entity_type") or record.get("entityType"),
+                        observations=record.get("observations", [])
+                    )
+                    entities.append(entity)
             
             if entities:
                 data.append({"context": context, "entities": entities})

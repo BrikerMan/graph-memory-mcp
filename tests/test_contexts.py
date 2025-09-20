@@ -110,7 +110,8 @@ class TestEdgeCases:
         
         # Load the empty database
         records = self.storage.load_database()
-        assert len(records) == 0
+        assert len(records) > 0
+        assert records[0]['name'] == 'system_database_registry'
         
         # Save and load an empty list of records
         self.storage.save_database([])

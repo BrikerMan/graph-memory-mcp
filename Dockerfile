@@ -29,9 +29,5 @@ RUN UV_NO_INSTALL=0 uv sync --no-cache
 # Copy application code
 COPY ./src /code/src
 
-## Healthcheck configuration
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD curl -f http://localhost:8000/health || exit 1
-
 ## Use start script
-CMD fastapi run src/main.py
+CMD fastapi run src/main.py --host 0.0.0.0

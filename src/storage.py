@@ -443,21 +443,24 @@ class MemoryStorage:
             # For other contexts, filter by keywords and pattern
             matching_records = []
             
-            for record in records:
-                # Check if record should be included based on pattern matching of entity name
-                if pattern and record.get("type") == "entity":
-                    entity_name = record.get("name", "")
-                    if not self._matches_pattern(entity_name, pattern):
-                        continue
-                
-                # Check each field in the record for keyword matches
-                if keywords:
+            # First, filter by pattern if provided
+            if pattern:
+                for record in records:
+                    if record.get("type") == "entity":
+                        entity_name = record.get("name", "")
+                        if self._matches_pattern(entity_name, pattern):
+                            matching_records.append(record)
+            else:
+                matching_records = records
+
+            # Then, filter by keywords if provided
+            if keywords:
+                keyword_filtered_records = []
+                for record in matching_records:
                     record_str = json.dumps(record).lower()
-                    if not any(keyword.lower() in record_str for keyword in keywords):
-                        continue
-                
-                # If we get here, the record matched all criteria
-                matching_records.append(record)
+                    if any(keyword.lower() in record_str for keyword in keywords):
+                        keyword_filtered_records.append(record)
+                matching_records = keyword_filtered_records
             
             if matching_records:
                 results[context] = matching_records
