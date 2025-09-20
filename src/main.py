@@ -164,7 +164,7 @@ async def memory_create_relations(
     try:
         # Create the relations
         context = normalize_context(request.context)
-        created_count = storage.memory_create_relations([relation.model_dump() for relation in request.relations], context)
+        storage.memory_create_relations([relation.model_dump() for relation in request.relations], context)
         
         # Get all relations in the context to return
         records = storage.load_database(context)
@@ -525,7 +525,7 @@ async def memory_delete_observations(
             )
         
         # Delete the observations
-        deleted_count = storage.memory_delete_observations(request.name, indices_to_delete, context)
+        storage.memory_delete_observations(request.name, indices_to_delete, context)
         
         # Get the updated entity
         updated_entity_data = storage.memory_read_entity(request.name, context)

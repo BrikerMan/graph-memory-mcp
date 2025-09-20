@@ -10,9 +10,8 @@ import json
 import logging
 import os
 import re
-from fnmatch import fnmatch
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -57,9 +56,32 @@ class MemoryStorage:
             logger.info(f"Created main database at {main_db_path}")
     
     def _create_empty_database(self, db_path: Path):
-        """Create an empty database file with safety marker."""
+        """Create an empty database file with safety marker and system metadata if main database."""
         with open(db_path, 'w') as f:
             f.write(json.dumps(BM_GM_SAFETY_MARKER) + '\n')
+            # If creating the main database, add system metadata and registry
+            if db_path.name == "memory.jsonl":
+                system_registry = {
+                    "name": "system_database_registry",
+                    "entity_type": "system_metadata",
+                    "observations": [
+                        "System Database Registry - All databases must be registered here",
+                        "Purpose: Centralized management of all contexts in the knowledge graph to ensure traceability and architectural consistency",
+                        "Rule: Any new database creation must add an entry here"
+                    ]
+                }
+                main_db_entry = {
+                    "name": "database_main",
+                    "entity_type": "registered_database",
+                    "observations": [
+                        "Core base database: basic information such as user profiles, goals, and preferences",
+                        "Change frequency: Low",
+                        "Dependencies: Referenced by other specialized databases as an analytical baseline",
+                        "Creation time: Automatically registered during system initialization"
+                    ]
+                }
+                f.write(json.dumps(system_registry, ensure_ascii=False) + '\n')
+                f.write(json.dumps(main_db_entry, ensure_ascii=False) + '\n')
     
     def _validate_database_file(self, db_path: Path) -> bool:
         """

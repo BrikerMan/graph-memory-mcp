@@ -1,5 +1,5 @@
 [project]
-name = "bm-graph-memory-mcp"
+name = "graph-memory-mcp"
 version = "0.1.0"
 description = "A persistent, indexed knowledge graph for AI agents, designed for MCP-compatible platforms"
 readme = "README.md"
