@@ -36,7 +36,7 @@ A consistent naming convention ensures clarity and safety. `bm_gm` stands for **
 - **`bm_gm_` tool prefixes**: Groups all memory functions together for the AI.
 - **`_bm_gm` safety marker**: The first line of every memory file is `{"type":"_bm_gm","source":"brikerman-graph-memory-mcp"}`. The system will refuse to write to any file that doesn't start with this marker, preventing data corruption.
 
-## Available AI Tools (`bm_gm_*`)
+## Available AI Tools (`memory_*`)
 
 The AI interacts with its memory using the following tools.
 
