@@ -30,4 +30,4 @@ RUN UV_NO_INSTALL=0 uv sync --no-cache
 COPY ./src /code/src
 
 ## Use start script
-CMD fastapi run src/main.py --host 0.0.0.0
+CMD uv run fastapi run src/main.py --host 0.0.0.0
